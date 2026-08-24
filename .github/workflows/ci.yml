@@ -26,4 +26,6 @@ jobs:
         run: python -m py_compile main.py schedule.py refresh_database.py server.py
 
       - name: Check JavaScript syntax
-        run: node --check scripts.js
+        run: |
+          node --check scripts.js
+          node --check autocomplete.js
