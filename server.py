@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Local server for the MAI schedule utility.
 
-Serves the static v4 UI and exposes one small same-origin API used for live
-checks against public.mai.ru. The existing compressed database continues to
-power group and room tools in the browser.
+Serves the static UI and exposes one small same-origin API used for live checks
+against public.mai.ru. If the preferred port is already occupied by an older
+copy of the app, the server automatically selects the next free port and opens
+that exact URL, so multiple extracted copies cannot silently mask each other.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ import json
 import mimetypes
 import threading
 import webbrowser
-from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -35,7 +35,9 @@ from schedule import (
     web_result_item,
 )
 
+APP_VERSION = "4.1.7"
 ROOT = Path(__file__).resolve().parent
+ADDRESS_IN_USE_ERRNOS = {48, 98, 10048}
 
 
 def _dedupe_results(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -58,8 +60,13 @@ def _dedupe_results(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+class ScheduleHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = False
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "MAISchedule/4.1.6"
+    server_version = f"MAISchedule/{APP_VERSION}"
 
     def log_message(self, fmt: str, *args: Any) -> None:
         # Keep the terminal quiet unless something actually fails.
@@ -92,7 +99,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
-            self.send_json({"ok": True, "version": "4.1.6"})
+            self.send_json(
+                {
+                    "ok": True,
+                    "version": APP_VERSION,
+                    "root": str(ROOT),
+                    "port": self.server.server_port,
+                }
+            )
             return
 
         path = unquote(parsed.path)
@@ -114,9 +128,13 @@ class Handler(BaseHTTPRequestHandler):
             "application/json",
         }:
             content_type += "; charset=utf-8"
-        # This is a local development utility. Avoid browser caches entirely: database_v413.js
-        # and scripts.js can change between two starts after a database rebuild.
-        self._send_bytes(candidate.read_bytes(), content_type=content_type, cache_control="no-store")
+
+        # Local development utility: never let stale JS/JSON survive a rebuild.
+        self._send_bytes(
+            candidate.read_bytes(),
+            content_type=content_type,
+            cache_control="no-store",
+        )
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -175,17 +193,53 @@ class Handler(BaseHTTPRequestHandler):
                 {"ok": False, "error": "Не удалось подключиться к public.mai.ru"},
                 502,
             )
-        except (argparse.ArgumentTypeError, ValueError, OSError, json.JSONDecodeError, RuntimeError) as exc:
+        except (
+            argparse.ArgumentTypeError,
+            ValueError,
+            OSError,
+            json.JSONDecodeError,
+            RuntimeError,
+        ) as exc:
             self.send_json({"ok": False, "error": str(exc)}, 400)
 
 
-def run(host: str, port: int, open_browser: bool) -> None:
-    server = ThreadingHTTPServer((host, port), Handler)
-    url = f"http://{host}:{port}/"
-    print(f"MAI Schedule 4.1.6  {url}")
+def _is_address_in_use(exc: OSError) -> bool:
+    return (
+        exc.errno in ADDRESS_IN_USE_ERRNOS
+        or getattr(exc, "winerror", None) == 10048
+    )
+
+
+def _bind_server(host: str, preferred_port: int, attempts: int) -> tuple[ScheduleHTTPServer, int]:
+    last_error: OSError | None = None
+    for port in range(preferred_port, preferred_port + max(1, attempts)):
+        try:
+            return ScheduleHTTPServer((host, port), Handler), port
+        except OSError as exc:
+            if not _is_address_in_use(exc):
+                raise
+            last_error = exc
+
+    raise RuntimeError(
+        f"Не удалось найти свободный порт в диапазоне "
+        f"{preferred_port}–{preferred_port + max(1, attempts) - 1}"
+    ) from last_error
+
+
+def run(host: str, port: int, open_browser: bool, port_attempts: int) -> None:
+    server, actual_port = _bind_server(host, port, port_attempts)
+    url = f"http://{host}:{actual_port}/"
+
+    print(f"MAI Schedule {APP_VERSION}")
+    print(f"Папка: {ROOT}")
+    if actual_port != port:
+        print(f"Порт {port} уже занят. Использую {actual_port} вместо него.")
+    print(f"URL:    {url}")
     print("Ctrl+C — остановить")
+
     if open_browser:
         threading.Timer(0.25, lambda: webbrowser.open(url)).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -195,13 +249,21 @@ def run(host: str, port: int, open_browser: bool) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Запустить локальный интерфейс расписания МАИ")
+    parser = argparse.ArgumentParser(
+        description="Запустить локальный интерфейс расписания МАИ"
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument(
+        "--port-attempts",
+        type=int,
+        default=20,
+        help="Сколько последовательных портов проверить, если основной занят",
+    )
     parser.add_argument("--no-browser", action="store_true")
     return parser
 
 
 if __name__ == "__main__":
     args = build_parser().parse_args()
-    run(args.host, args.port, not args.no_browser)
+    run(args.host, args.port, not args.no_browser, args.port_attempts)
