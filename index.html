@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Расписание МАИ</title>
-  <link rel="stylesheet" href="styles.css?v=4.1.5">
+  <link rel="stylesheet" href="styles.css?v=4.1.7">
   <style>
     .group-toolbar .field.grow { position: relative; }
     .group-autocomplete {
@@ -228,7 +228,7 @@
   </div>
 
   <footer class="footer">
-    <span>v4.1.6</span>
+    <span>v4.1.7</span>
     <span>·</span>
     <a href="https://t.me/vanyaide" target="_blank" rel="noopener noreferrer">@vanyaide</a>
   </footer>
@@ -250,9 +250,9 @@
     <div id="modal-weeks-list" class="week-list"></div>
   </dialog>
 
-  <script src="database_v413.js?v=4.1.5"></script>
-  <script src="database_sample_v413.js?v=4.1.5"></script>
-  <script src="scripts.js?v=4.1.5"></script>
+  <script src="database_v413.js?v=4.1.7"></script>
+  <script src="database_sample_v413.js?v=4.1.7"></script>
+  <script src="scripts.js?v=4.1.7"></script>
   <script>
     (() => {
       const input = document.getElementById('group-input');
@@ -295,12 +295,23 @@
           .slice(0, 8);
         activeIndex = -1;
 
+        popup.innerHTML = '';
         if (!matches.length) {
-          popup.innerHTML = '<div class="group-autocomplete-empty">Совпадений нет</div>';
+          const empty = document.createElement('div');
+          empty.className = 'group-autocomplete-empty';
+          empty.textContent = 'Совпадений нет';
+          popup.appendChild(empty);
         } else {
-          popup.innerHTML = matches.map((group, index) =>
-            `<button class="group-autocomplete-item" type="button" role="option" data-index="${index}" title="${group}">${group}</button>`
-          ).join('');
+          matches.forEach((group, index) => {
+            const item = document.createElement('button');
+            item.className = 'group-autocomplete-item';
+            item.type = 'button';
+            item.setAttribute('role', 'option');
+            item.dataset.index = String(index);
+            item.title = group;
+            item.textContent = group;
+            popup.appendChild(item);
+          });
         }
         popup.hidden = false;
         input.setAttribute('aria-expanded', 'true');
