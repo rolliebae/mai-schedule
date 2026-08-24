@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Расписание МАИ</title>
+  <link rel="stylesheet" href="styles.css?v=4.1.5">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Расписание МАИ</h1>
+        <p class="muted">Группы, преподаватели и аудитории</p>
+      </div>
+      <div class="topbar-actions">
+        <span id="db-status" class="status-dot" title="Статус локальной базы">База</span>
+        <button id="update-database-btn" class="button button-quiet" type="button">Импорт JSON</button>
+        <input id="database-file-input" type="file" accept=".json" hidden>
+      </div>
+    </header>
+
+    <div id="boot-error" class="notice notice-error" hidden>
+      <strong>Не удалось загрузить базу расписания.</strong>
+      <span id="boot-error-text"></span>
+      <button id="load-database-btn" class="button button-secondary" type="button">Выбрать JSON</button>
+    </div>
+
+    <div id="file-mode-notice" class="notice notice-info" hidden>
+      <strong>Локальный режим.</strong>
+      <span>При прямом открытии используется небольшая резервная база. Для полной базы всех групп и свежих данных запусти <code>start.bat</code>.</span>
+    </div>
+
+    <nav class="tabs" aria-label="Разделы">
+      <button class="tab is-active" data-tab="group" type="button">Группа</button>
+      <button class="tab" data-tab="teacher" type="button">Преподаватель</button>
+      <button class="tab" data-tab="rooms" type="button">Аудитории</button>
+    </nav>
+
+    <main id="app" hidden>
+      <section class="panel tab-panel is-active" data-panel="group">
+        <div class="section-head">
+          <div>
+            <h2>Расписание группы</h2>
+            <p>Добавь группу и переключай недели без перезагрузки страницы.</p>
+          </div>
+        </div>
+
+        <div class="toolbar group-toolbar">
+          <div class="field grow">
+            <label for="group-input">Группа</label>
+            <input id="group-input" list="groups-datalist" autocomplete="off" placeholder="Начни вводить номер группы">
+            <datalist id="groups-datalist"></datalist>
+          </div>
+          <div id="selected-groups-container" class="saved-groups" aria-label="Сохранённые группы"></div>
+        </div>
+
+        <div id="schedule-empty" class="empty-state">
+          Выбери группу, чтобы посмотреть расписание.
+        </div>
+
+        <div id="schedule-display" hidden>
+          <div class="weekbar">
+            <button id="prev-week-btn" class="icon-button" type="button" aria-label="Предыдущая неделя">←</button>
+            <button id="week-dates-title" class="week-title" type="button" aria-label="Выбрать неделю"></button>
+            <button id="next-week-btn" class="icon-button" type="button" aria-label="Следующая неделя">→</button>
+          </div>
+          <div id="schedule-content" class="schedule-grid"></div>
+        </div>
+      </section>
+
+      <section class="panel tab-panel" data-panel="teacher" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Проверить преподавателя</h2>
+            <p>Онлайн-проверка полного JSON расписания группы с фильтром по периоду.</p>
+          </div>
+          <span id="teacher-source" class="source-label">МАИ онлайн</span>
+        </div>
+
+        <form id="teacher-form" class="form-row" autocomplete="off">
+          <div class="field field-group">
+            <label for="teacher-group">Группа</label>
+            <input id="teacher-group" value="М9О-217БВ-25" list="groups-datalist" required>
+          </div>
+          <div class="field field-teacher">
+            <label for="teacher-query">Преподаватель</label>
+            <input id="teacher-query" value="Зверев" list="lectors-datalist" required>
+            <datalist id="lectors-datalist"></datalist>
+          </div>
+          <div class="field">
+            <label for="teacher-start">С</label>
+            <input id="teacher-start" type="date" value="2026-09-01" required>
+          </div>
+          <div class="field">
+            <label for="teacher-end">По</label>
+            <input id="teacher-end" type="date" value="2027-01-31" required>
+          </div>
+          <button class="button button-primary" type="submit">Проверить</button>
+        </form>
+
+        <div id="teacher-result" class="teacher-result empty-state">
+          Запрос ещё не выполнен.
+        </div>
+      </section>
+
+      <section class="panel tab-panel" data-panel="rooms" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Аудитории</h2>
+            <p>Свободные аудитории и проверка конкретной аудитории на выбранную пару.</p>
+          </div>
+        </div>
+
+        <div class="room-tools">
+          <section class="room-tool">
+            <h3>Найти свободные</h3>
+            <form id="find-free-form" autocomplete="off">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="find-date">Дата</label>
+                  <input id="find-date" type="date" required>
+                </div>
+                <div class="field">
+                  <label for="find-building">Корпус</label>
+                  <select id="find-building" required>
+                    <option value="" selected disabled>Выбрать</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="find-pair">Пара</label>
+                  <select id="find-pair" required>
+                    <option value="1">1 · 09:00–10:30</option>
+                    <option value="2">2 · 10:45–12:15</option>
+                    <option value="3">3 · 13:00–14:30</option>
+                    <option value="4">4 · 14:45–16:15</option>
+                    <option value="5">5 · 16:30–18:00</option>
+                    <option value="6">6 · 18:15–19:45</option>
+                  </select>
+                </div>
+              </div>
+              <label class="check-row" for="trim-prefix-checkbox">
+                <input id="trim-prefix-checkbox" type="checkbox">
+                <span>Скрывать префикс корпуса</span>
+              </label>
+              <button class="button button-primary" type="submit">Найти</button>
+            </form>
+            <div id="free-rooms-result" class="tool-result"></div>
+          </section>
+
+          <section class="room-tool">
+            <h3>Проверить аудиторию</h3>
+            <form id="check-status-form" autocomplete="off">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="check-date">Дата</label>
+                  <input id="check-date" type="date" required>
+                </div>
+                <div class="field">
+                  <label for="check-pair">Пара</label>
+                  <select id="check-pair" required>
+                    <option value="1">1 · 09:00–10:30</option>
+                    <option value="2">2 · 10:45–12:15</option>
+                    <option value="3">3 · 13:00–14:30</option>
+                    <option value="4">4 · 14:45–16:15</option>
+                    <option value="5">5 · 16:30–18:00</option>
+                    <option value="6">6 · 18:15–19:45</option>
+                  </select>
+                </div>
+                <div class="field wide-field">
+                  <label for="check-room">Аудитория</label>
+                  <input id="check-room" list="rooms-datalist" placeholder="ГУК Б-444" required>
+                  <datalist id="rooms-datalist"></datalist>
+                </div>
+              </div>
+              <button class="button button-primary" type="submit">Проверить</button>
+            </form>
+            <div id="status-result" class="tool-result"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <span>v4.1.6</span>
+    <span>·</span>
+    <a href="https://t.me/vanyaide" target="_blank" rel="noopener noreferrer">@vanyaide</a>
+  </footer>
+
+  <dialog id="lesson-modal" class="dialog">
+    <div class="dialog-head">
+      <h2 id="modal-room-title"></h2>
+      <button class="dialog-close" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <div id="modal-lessons-list"></div>
+  </dialog>
+
+  <dialog id="week-selector-modal" class="dialog week-dialog">
+    <div class="dialog-head">
+      <h2>Неделя</h2>
+      <button class="dialog-close" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <button id="goto-current-week-btn" class="button button-secondary" type="button">Текущая неделя</button>
+    <div id="modal-weeks-list" class="week-list"></div>
+  </dialog>
+
+  <script src="database_v413.js?v=4.1.5"></script>
+  <script src="database_sample_v413.js?v=4.1.5"></script>
+  <script src="scripts.js?v=4.1.5"></script>
+</body>
+</html>

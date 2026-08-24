@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Generated MAI data
+database_v413.json
+database_v413.js
+database_status.json
+schedules/current/
+mai_schedule_output/
+
+# Legacy/local data
+database_legacy_v400.json
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
